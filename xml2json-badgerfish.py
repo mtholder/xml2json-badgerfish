@@ -106,6 +106,57 @@ def to_badgerfish_dict(src, encoding=u'utf8'):
     key, val = _gen_bf_el(root)
     return {key: val}
 
+
+def _gen_xml_from_bf(parent, o, key_order=None):
+    pass
+
+def _break_keys_by_bf_type(o):
+    '''Breaks o into a triple two dicts and text data by key type:
+        attrib keys (start with '@'),
+        text (value associated with the '$' or None),
+        child element keys (all others)
+    '''
+    ak = {}
+    tk = None
+    ck = {}
+    for k, v in o.items():
+        if k.startswith('@'):
+            if k == '@xmlns':
+                ak['xmlns'] = v['$']
+                for nsk, nsv in v.items():
+                    if nsk != '$':
+                        ak['xmlns:' + nsk] = nsv
+            else:
+                s = k[1:]
+                ak[s] = v
+        elif k == '$':
+            tk = v
+        else:
+            ck[k] = v
+    return ak, tk, ck
+
+
+def bf2ET(obj_dict):
+    '''Converts a dict-like object that obeys the badgerfish conventions
+    to an ElementTree.Element that represents the data in a subtree of
+    XML tree.
+    '''
+    base_keys = obj_dict.keys()
+    assert(len(base_keys) == 1)
+    root_name = base_keys[0]
+    root_obj = obj_dict[root_name]
+    atts, data, children = _break_keys_by_bf_type(root_obj)
+    #attrib_dict = _xml_attrib_for_bf_obj(root_obj)
+    r = ET.Element(root_name, attrib=atts)
+    _gen_xml_from_bf(r, root_obj)
+    return r
+
+def write_obj_as_xml(obj_dict, file_obj):
+    r = bf2ET(obj_dict)
+    ET.ElementTree(r).write(file_obj,
+                            encoding='utf-8')
+    file_obj.write(u'\n')
+
 def get_ot_study_info_from_nexml(src, encoding=u'utf8'):
     '''Converts an XML doc to JSON using the badgerfish convention (see to_badgerfish_dict)
     and then prunes elements not used by open tree of life study curartion.
@@ -130,28 +181,6 @@ def get_ot_study_info_from_treebase_nexml(src, encoding=u'utf8'):
     '''
     o = get_ot_study_info_from_nexml(src, encoding=encoding)
     return o
-
-def _gen_xml_from_bf(parent, o, key_order=None):
-    pass
-
-def _break_keys_by_bf_type(o):
-    '''Breaks o into a triple two dicts and text data by key type:
-        attrib keys (start with '@'),
-        text (value associated with the '$' or None),
-        child element keys (all others)
-    '''
-    ak = {}
-    tk = None
-    ck = {}
-    for k, v in o.items():
-        if k.startswith('@'):
-            s = k[1:]
-            ak[s] = v
-        elif k == '$':
-            tk = v
-        else:
-            ck[k] = v
-    return ak, tk, ck
 
 
 def nexobj2ET(nexml_dict):
@@ -192,28 +221,6 @@ def nexobj2ET(nexml_dict):
     _gen_xml_from_bf(r, nexml_dict[u'nexml'], nexml_key_order)
     return r
 
-def bf2ET(obj_dict):
-    '''Converts a dict-like object that obeys the badgerfish conventions
-    to an ElementTree.Element that represents the data in a subtree of
-    XML tree.
-    '''
-    base_keys = obj_dict.keys()
-    assert(len(base_keys) == 1)
-    root_name = base_keys[0]
-    root_obj = obj_dict[root_name]
-    atts, data, children = _break_keys_by_bf_type(root_obj)
-    #attrib_dict = _xml_attrib_for_bf_obj(root_obj)
-    r =ET.Element(root_name, attrib=atts)
-    _gen_xml_from_bf(r, root_obj)
-    return r
-
-def write_obj_as_xml(obj_dict, file_obj):
-    r = bf2ET(obj_dict)
-    ET.ElementTree(r).write(file_obj,
-                            encoding='utf-8',
-                            xml_declaration=True)
-    file_obj.write(u'\n')
-
 if __name__ == '__main__':
     import sys
     mode_list = ['xj', 'jx']
@@ -233,7 +240,7 @@ if __name__ == '__main__':
     if mode == 'xj':
         o = get_ot_study_info_from_nexml(inp)
         json.dump(o, out, indent=0, sort_keys=True)
-        outf.write('\n')
+        out.write('\n')
     elif mode == 'jx':
         o = json.load(codecs.open(inp, 'rU', 'utf-8'))
         write_obj_as_xml(o, out)
