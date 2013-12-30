@@ -14,12 +14,26 @@ def _gen_bf_el(x):
     '''
     obj = {}
     # grab the tag of x
-    t = x.nodeName
+    el_name = x.nodeName
+    assert el_name is not None
     # add the attributes to the dictionary
     att_container = x.attributes
+    ns_obj = {}
     for i in xrange(att_container.length):
         attr = att_container.item(i)
-        obj['@' + attr.name] = attr.value
+        n = attr.name
+        t = None
+        if n.startswith('xmlns'):
+            if n == 'xmlns':
+                t = '$'
+            elif n.startswith('xmlns:'):
+                t = n[6:] # strip off the xmlns:
+        if t is None:
+            obj['@' + n] = attr.value
+        else:
+            ns_obj[t] = attr.value
+    if ns_obj:
+        obj['@xmlns'] = ns_obj
 
     tl = []
     ntl = []
@@ -72,7 +86,7 @@ def _gen_bf_el(x):
         #   results in a name clash among the tags of the children
         assert ct not in obj
         obj[ct] = dcl
-    return t, obj
+    return el_name, obj
 
 def to_badgerfish_dict(filepath=None, file_object=None, encoding=u'utf8'):
     '''Takes either:

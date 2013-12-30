@@ -1,0 +1,9 @@
+{
+"charlie": {
+"$": "bob", 
+"@xmlns": {
+"$": "http:\\/\\/some-namespace", 
+"charlie": "http:\\/\\/some-other-namespace"
+}
+}
+}
