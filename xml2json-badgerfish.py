@@ -1,7 +1,8 @@
 #!/usr/bin/env python
+import xml.etree.ElementTree as ET
 import xml.dom.minidom
-import json
 import codecs
+import json
 
 def _gen_bf_el(x):
     '''
@@ -88,7 +89,7 @@ def _gen_bf_el(x):
         obj[ct] = dcl
     return el_name, obj
 
-def to_badgerfish_dict(filepath=None, file_object=None, encoding=u'utf8'):
+def to_badgerfish_dict(src, encoding=u'utf8'):
     '''Takes either:
             (1) a file_object, or
             (2) (if file_object is None) a filepath and encoding
@@ -98,14 +99,14 @@ def to_badgerfish_dict(filepath=None, file_object=None, encoding=u'utf8'):
     Caveats/bugs:
         
     '''
-    if file_object is None:
-        file_object = codecs.open(filepath, 'rU', encoding=encoding)
-    doc = xml.dom.minidom.parse(file_object)
+    if isinstance(src, str):
+        src = codecs.open(src, 'rU', encoding=encoding)
+    doc = xml.dom.minidom.parse(src)
     root = doc.documentElement
     key, val = _gen_bf_el(root)
     return {key: val}
 
-def get_ot_study_info_from_nexml(filepath=None, file_object=None, encoding=u'utf8'):
+def get_ot_study_info_from_nexml(src, encoding=u'utf8'):
     '''Converts an XML doc to JSON using the badgerfish convention (see to_badgerfish_dict)
     and then prunes elements not used by open tree of life study curartion.
 
@@ -113,25 +114,127 @@ def get_ot_study_info_from_nexml(filepath=None, file_object=None, encoding=u'utf
         removes nexml/characters @TODO: should replace it with a URI for 
             where the removed character data can be found.
     '''
-    o = to_badgerfish_dict(fn)
+    o = to_badgerfish_dict(src)
     try:
         del o['nexml']['characters']
     except:
         pass
     return o
 
-def get_ot_study_info_from_treebase_nexml(filepath=None, file_object=None, encoding=u'utf8'):
+def get_ot_study_info_from_treebase_nexml(src, encoding=u'utf8'):
     '''Just a stub at this point. Intended to normalize treebase-specific metadata 
     into the locations where open tree of life software that expects it. 
+
+    `src` can be a string (filepath) or a input file object.
     @TODO: need to investigate which metadata should move or be copied
     '''
-    o = get_ot_study_info_from_nexml(filepath=filepath, file_object=file_object, encoding=encoding)
+    o = get_ot_study_info_from_nexml(src, encoding=encoding)
     return o
+
+def _gen_xml_from_bf(parent, o, key_order=None):
+    pass
+
+def _break_keys_by_bf_type(o):
+    '''Breaks o into a triple two dicts and text data by key type:
+        attrib keys (start with '@'),
+        text (value associated with the '$' or None),
+        child element keys (all others)
+    '''
+    ak = {}
+    tk = None
+    ck = {}
+    for k, v in o.items():
+        if k.startswith('@'):
+            s = k[1:]
+            ak[s] = v
+        elif k == '$':
+            tk = v
+        else:
+            ck[k] = v
+    return ak, tk, ck
+
+
+def nexobj2ET(nexml_dict):
+    assert(u'nexml' in nexml_dict)
+    # boilerplate base level attributes taken from S1099.xml TreeBase file
+    #   as an example.
+    base_attrib = {
+        'xmlns:nex': "http://www.nexml.org/2009",
+        'xmlns': "http://www.nexml.org/2009",
+        'xmlns:dc': "http://purl.org/dc/elements/1.1/",
+        'xmlns:dcterms': 'http://purl.org/dc/terms/',
+        'xmlns:prism': "http://prismstandard.org/namespaces/1.2/basic/",
+        'xmlns:rdf': "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        'xmlns:rdfs': "http://www.w3.org/2000/01/rdf-schema#", 
+        'xmlns:skos': "http://www.w3.org/2004/02/skos/core#",
+        'xmlns:tb': "http://purl.org/phylo/treebase/2.0/terms#",
+        'xmlns:xsd': "http://www.w3.org/2001/XMLSchema#",
+        'xmlns:xsi': "http://www.w3.org/2001/XMLSchema-instance",
+        'generator': "org.opentreeoflife.api.nexonvalidator.json2xml",
+        'version': "0.9"
+    }
+    r = ET.Element('nex:nexml', attrib=base_attrib)
+    nexml_key_order = (('meta', None),
+                       ('otus', (('meta', None),
+                                 ('otu', None)
+                                )
+                       ),
+                       ('characters', None),
+                       ('trees', (('meta', None),
+                                  ('tree', (('meta', None),
+                                            ('node', None),
+                                            ('edge', None)
+                                           )
+                                  )
+                                 )
+                       )
+                      )
+    _gen_xml_from_bf(r, nexml_dict[u'nexml'], nexml_key_order)
+    return r
+
+def bf2ET(obj_dict):
+    '''Converts a dict-like object that obeys the badgerfish conventions
+    to an ElementTree.Element that represents the data in a subtree of
+    XML tree.
+    '''
+    base_keys = obj_dict.keys()
+    assert(len(base_keys) == 1)
+    root_name = base_keys[0]
+    root_obj = obj_dict[root_name]
+    atts, data, children = _break_keys_by_bf_type(root_obj)
+    #attrib_dict = _xml_attrib_for_bf_obj(root_obj)
+    r =ET.Element(root_name, attrib=atts)
+    _gen_xml_from_bf(r, root_obj)
+    return r
+
+def write_obj_as_xml(obj_dict, file_obj):
+    r = bf2ET(obj_dict)
+    ET.ElementTree(r).write(file_obj,
+                            encoding='utf-8',
+                            xml_declaration=True)
+    file_obj.write(u'\n')
 
 if __name__ == '__main__':
     import sys
-    fn = sys.argv[1]
-    o = get_ot_study_info_from_nexml(filepath=fn)
-    outf = sys.stdout
-    json.dump(o, outf, indent=0, sort_keys=True)
-    outf.write('\n')
+    mode_list = ['xj', 'jx']
+    try:
+        mode = sys.argv[1].lower()
+        assert(mode in mode_list)
+    except:
+        opts = '", "'.join(mode_list)
+        msg = 'Expecing the first argument to be one of:\n "{o}"'.format(o=opts)
+        sys.exit(msg)
+    try:
+        inp = sys.argv[2]
+    except:
+        inp = sys.stdin
+    out = codecs.getwriter('utf-8')(sys.stdout)
+    
+    if mode == 'xj':
+        o = get_ot_study_info_from_nexml(inp)
+        json.dump(o, out, indent=0, sort_keys=True)
+        outf.write('\n')
+    elif mode == 'jx':
+        o = json.load(codecs.open(inp, 'rU', 'utf-8'))
+        write_obj_as_xml(o, out)
+        
