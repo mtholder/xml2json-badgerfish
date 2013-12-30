@@ -1,0 +1,15 @@
+{
+"alice": {
+"$": "   ", 
+"@xmlns": {
+"$": "http://some-namespace", 
+"charlie": "http://some-other-namespace"
+}, 
+"bob": {
+"$": "david"
+}, 
+"charlie:edgar": {
+"$": "frank"
+}
+}
+}
