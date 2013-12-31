@@ -11,10 +11,16 @@ then
     echo "Second arg should be the nexml schema. ${nexmlschemafp} does not exist"
     exit 1
 fi
-if test -f .1.xml -o -f .1.json -o -f .2.xml
+
+if test $3 = "-o"
 then
-    echo "file .#.* is in the way!"
-    exit 1
+    echo "dot files may be overwritten"
+else
+    if test -f .1.xml -o -f .1.json -o -f .2.xml -o -f .pp2.xml -o -f .pp2.xml
+    then
+        echo "file .# or .pp# files in the way and the -o was not used as the 3rd arg"
+        exit 1
+    fi
 fi
 
 # 1. Verify that the input is valid NeXML
@@ -27,7 +33,6 @@ cat "${inpnexml}" | sed -e 's/<characters\(.*\) xml:base="[^"]*" */<characters\1
 if ! xmllint --schema "${nexmlschemafp}" .1.xml >/dev/null 2>&1
 then
     echo "${inpnexml} is not a valid NeXML file"
-    rm .1.xml
     exit 1
 fi
 
@@ -35,7 +40,6 @@ fi
 if ! ./xml2json-badgerfish.py nj .1.xml > .1.json
 then
     echo "Conversion of .1.xml to JSON failed"
-    rm .1.json
     exit 1
 fi
 
@@ -43,17 +47,33 @@ fi
 if ! ./xml2json-badgerfish.py jn .1.json > .2.xml
 then
     echo "Conversion of .1.json to JSON failed"
-    rm .1.xml
-    rm -f .2.xml
     exit 1
 fi
 
-if ! diff .1.xml .2.xml 
+# 4. validate NeXML
+if ! xmllint --schema "${nexmlschemafp}" .2.xml >/dev/null 2>&1
 then
-    echo "Did not roundtrip"
-    rm .1.json
+    echo "XML written to .2.xml was not valid NeXML"
     exit 1
 fi
-rm .1.json
-rm .1.xml
-rm .2.xml
+
+# 5. very that after pretty printing and culling of unstable aspects of the file
+# the input and output are identical
+# pretty print
+xmllint --format .1.xml > .pp1.xml || exit
+xmllint --format .2.xml > .pp2.xml || exit
+
+# pretty print
+saxon-xslt .pp1.xml sortattr.xslt > .s1.xml || exit
+saxon-xslt .pp2.xml sortattr.xslt > .s2.xml || exit
+
+# clean by getting rid of hard-to-standardize xml decl and generator field in top element
+sed -e '/<\?xml version/d' .s1.xml | sed -e 's/<nex\(.*\)generator="[^"]*"/<nex\1/' > .cpp1.xml
+sed -e '/<\?xml version/d' .s2.xml | sed -e 's/<nex\(.*\)generator="[^"]*"/<nex\1/' > .cpp2.xml
+
+
+if ! diff .cpp1.xml .cpp2.xml 
+then
+    echo "Did not roundtrip"
+    exit 1
+fi

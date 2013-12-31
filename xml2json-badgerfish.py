@@ -227,7 +227,21 @@ def nexobj2ET(obj_dict):
                                  ('otu', None)
                                 )
                        ),
-                       ('characters', None),
+                       ('characters', (('meta', None),
+                                       ('format',(('meta', None),
+                                                  ('states', (('state', None),
+                                                              ('uncertain_state_set', None),
+                                                             )
+                                                  ),
+                                                  ('char', None)
+                                                 ),
+                                       ),
+                                       ('matrix', (('meta', None),
+                                                   ('row', None),
+                                                  )
+                                       ),
+                                      ),
+                       ),
                        ('trees', (('meta', None),
                                   ('tree', (('meta', None),
                                             ('node', None),
