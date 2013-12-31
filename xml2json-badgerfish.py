@@ -107,8 +107,30 @@ def to_badgerfish_dict(src, encoding=u'utf8'):
     return {key: val}
 
 
-def _gen_xml_from_bf(parent, o, key_order=None):
-    pass
+def _add_ET_subtree(parent, children_dict, key_order=None):
+    written = set()
+    if key_order:
+        for t in key_order:
+            k, next_order_el = t
+            assert(next_order_el is None or isinstance(next_order_el, tuple))
+            if k in children_dict:
+                child = children_dict[k]
+                written.add(k)
+                ca, cd, cc = _break_keys_by_bf_type(child)
+                cel = ET.SubElement(parent, k, attrib=ca)
+                if cd:
+                    cel.text = cd
+                _add_ET_subtree(cel, cc, next_order_el)
+    ksl = children_dict.keys()
+    ksl.sort()
+    for k in ksl:
+        child = children_dict[k]
+        if k not in written:
+            ca, cd, cc = _break_keys_by_bf_type(child)
+            cel = ET.SubElement(parent, k, attrib=ca)
+            if cd:
+                cel.text = cd
+            _add_ET_subtree(cel, cc, None)
 
 def _break_keys_by_bf_type(o):
     '''Breaks o into a triple two dicts and text data by key type:
@@ -136,7 +158,7 @@ def _break_keys_by_bf_type(o):
     return ak, tk, ck
 
 
-def bf2ET(obj_dict):
+def bf2ET(obj_dict, key_order=None):
     '''Converts a dict-like object that obeys the badgerfish conventions
     to an ElementTree.Element that represents the data in a subtree of
     XML tree.
@@ -148,7 +170,9 @@ def bf2ET(obj_dict):
     atts, data, children = _break_keys_by_bf_type(root_obj)
     #attrib_dict = _xml_attrib_for_bf_obj(root_obj)
     r = ET.Element(root_name, attrib=atts)
-    _gen_xml_from_bf(r, root_obj)
+    if data:
+        r.text = data
+    _add_ET_subtree(r, children, key_order)
     return r
 
 def write_obj_as_xml(obj_dict, file_obj):
