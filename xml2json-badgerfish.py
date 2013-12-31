@@ -106,6 +106,15 @@ def to_badgerfish_dict(src, encoding=u'utf8'):
     key, val = _gen_bf_el(root)
     return {key: val}
 
+def _add_child_list_to_ET_subtree(parent, child_list, key, key_order):
+    if not isinstance(child_list, list):
+        child_list = [child_list]
+    for child in child_list:
+        ca, cd, cc = _break_keys_by_bf_type(child)
+        cel = ET.SubElement(parent, key, attrib=ca)
+        if cd:
+            cel.text = cd
+        _add_ET_subtree(cel, cc, key_order)
 
 def _add_ET_subtree(parent, children_dict, key_order=None):
     written = set()
@@ -114,23 +123,16 @@ def _add_ET_subtree(parent, children_dict, key_order=None):
             k, next_order_el = t
             assert(next_order_el is None or isinstance(next_order_el, tuple))
             if k in children_dict:
-                child = children_dict[k]
+                child_list = children_dict[k]
                 written.add(k)
-                ca, cd, cc = _break_keys_by_bf_type(child)
-                cel = ET.SubElement(parent, k, attrib=ca)
-                if cd:
-                    cel.text = cd
-                _add_ET_subtree(cel, cc, next_order_el)
+                _add_child_list_to_ET_subtree(parent, child_list, k, next_order_el)
     ksl = children_dict.keys()
     ksl.sort()
     for k in ksl:
-        child = children_dict[k]
+        child_list = children_dict[k]
         if k not in written:
-            ca, cd, cc = _break_keys_by_bf_type(child)
-            cel = ET.SubElement(parent, k, attrib=ca)
-            if cd:
-                cel.text = cd
-            _add_ET_subtree(cel, cc, None)
+            _add_child_list_to_ET_subtree(parent, child_list, k, None)
+
 
 def _break_keys_by_bf_type(o):
     '''Breaks o into a triple two dicts and text data by key type:
@@ -191,7 +193,7 @@ def get_ot_study_info_from_nexml(src, encoding=u'utf8'):
     '''
     o = to_badgerfish_dict(src)
     try:
-        del o['nexml']['characters']
+        pass # del o['nexml']['characters']
     except:
         pass
     return o
@@ -207,26 +209,19 @@ def get_ot_study_info_from_treebase_nexml(src, encoding=u'utf8'):
     return o
 
 
-def nexobj2ET(nexml_dict):
-    assert(u'nexml' in nexml_dict)
-    # boilerplate base level attributes taken from S1099.xml TreeBase file
-    #   as an example.
-    base_attrib = {
-        'xmlns:nex': "http://www.nexml.org/2009",
-        'xmlns': "http://www.nexml.org/2009",
-        'xmlns:dc': "http://purl.org/dc/elements/1.1/",
-        'xmlns:dcterms': 'http://purl.org/dc/terms/',
-        'xmlns:prism': "http://prismstandard.org/namespaces/1.2/basic/",
-        'xmlns:rdf': "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-        'xmlns:rdfs': "http://www.w3.org/2000/01/rdf-schema#", 
-        'xmlns:skos': "http://www.w3.org/2004/02/skos/core#",
-        'xmlns:tb': "http://purl.org/phylo/treebase/2.0/terms#",
-        'xmlns:xsd': "http://www.w3.org/2001/XMLSchema#",
-        'xmlns:xsi': "http://www.w3.org/2001/XMLSchema-instance",
-        'generator': "org.opentreeoflife.api.nexonvalidator.json2xml",
-        'version': "0.9"
-    }
-    r = ET.Element('nex:nexml', attrib=base_attrib)
+def nexobj2ET(obj_dict):
+    base_keys = obj_dict.keys()
+    assert(len(base_keys) == 1)
+    root_name = base_keys[0]
+    root_obj = obj_dict[root_name]
+    atts, data, children = _break_keys_by_bf_type(root_obj)
+    atts['generator'] = 'org.opentreeoflife.api.nexonvalidator.json2xml'
+    if not 'version' in atts:
+        atts['version'] = '0.9'
+    #attrib_dict = _xml_attrib_for_bf_obj(root_obj)
+    r = ET.Element(root_name, attrib=atts)
+    if data:
+        r.text = data
     nexml_key_order = (('meta', None),
                        ('otus', (('meta', None),
                                  ('otu', None)
@@ -242,12 +237,18 @@ def nexobj2ET(nexml_dict):
                                  )
                        )
                       )
-    _gen_xml_from_bf(r, nexml_dict[u'nexml'], nexml_key_order)
+    _add_ET_subtree(r, children, nexml_key_order)
     return r
 
+def write_obj_as_nexml(obj_dict, file_obj):
+    r = nexobj2ET(obj_dict)
+    ET.ElementTree(r).write(file_obj,
+                            encoding='utf-8')
+    file_obj.write(u'\n')
+    
 if __name__ == '__main__':
     import sys
-    mode_list = ['xj', 'jx']
+    mode_list = ['xj', 'jx', 'nj', 'jn']
     try:
         mode = sys.argv[1].lower()
         assert(mode in mode_list)
@@ -261,11 +262,17 @@ if __name__ == '__main__':
         inp = sys.stdin
     out = codecs.getwriter('utf-8')(sys.stdout)
     
-    if mode == 'xj':
-        o = get_ot_study_info_from_nexml(inp)
+    if mode in ['xj', 'nj']:
+        if mode == 'xj':
+            o = to_badgerfish_dict(inp)
+        else:
+            o = get_ot_study_info_from_nexml(inp)
         json.dump(o, out, indent=0, sort_keys=True)
         out.write('\n')
-    elif mode == 'jx':
+    elif mode in ['jx', 'jn']:
         o = json.load(codecs.open(inp, 'rU', 'utf-8'))
-        write_obj_as_xml(o, out)
+        if mode == 'jx':
+            write_obj_as_xml(o, out)
+        else:
+            write_obj_as_nexml(o, out)
         

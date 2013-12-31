@@ -1,5 +1,5 @@
 {
-"$": {
+"alice": {
 "$": "bob", 
 "@xmlns": {
 "$": "http://some-namespace"
